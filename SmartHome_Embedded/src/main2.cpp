@@ -9,13 +9,16 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
+// Khai báo prototype của hàm checkScheduleTime
+bool checkScheduleTime(int currentHour, int currentMinute, int startHour, int startMinute, int endHour, int endMinute);
+
 // Pin settings
 #define RELAY_FAN 18
 #define RELAY_LIGHT 19
 
 // WiFi credentials
-const char* ssid = "golthan";
-const char* password = "12345678";
+const char* ssid = "DT";
+const char* password = "28111974";
 extern int second, minute, hour, day, wday, month, year;
 // Web server
 WebServer server(80);
@@ -94,24 +97,36 @@ void TaskControlRelay(void *pvParameters) {
       digitalWrite(RELAY_FAN, manualFanState ? HIGH : LOW);
       digitalWrite(RELAY_LIGHT, manualLightState ? HIGH : LOW);
     } 
-    else if (ScheduleMode) {
-      uint8_t hour, minute, second;
-      readDS1307();  // Lấy thời gian từ DS1307
+    else if (ScheduleMode && fanStartHour != -1 && lightStartHour != -1) {
+      readDS1307();
+      Serial.printf("Current Time: %02d:%02d\n", hour, minute);
 
-      if (fanStartHour <= hour && hour < fanEndHour) {
-        digitalWrite(RELAY_FAN, HIGH);
-      } else {
-        digitalWrite(RELAY_FAN, LOW);
-      }
+      // Kiểm tra thời gian FAN
+      bool isFanOn = checkScheduleTime(hour, minute, fanStartHour, fanStartMinute, fanEndHour, fanEndMinute);
+      digitalWrite(RELAY_FAN, isFanOn ? HIGH : LOW);
 
-      if (lightStartHour <= hour && hour < lightEndHour) {
-        digitalWrite(RELAY_LIGHT, HIGH);
-      } else {
-        digitalWrite(RELAY_LIGHT, LOW);
-      }
+      // Kiểm tra thời gian LIGHT
+      bool isLightOn = checkScheduleTime(hour, minute, lightStartHour, lightStartMinute, lightEndHour, lightEndMinute);
+      digitalWrite(RELAY_LIGHT, isLightOn ? HIGH : LOW);
     }
 
     vTaskDelay(pdMS_TO_TICKS(500));
+  }
+}
+// Hàm hỗ trợ kiểm tra thời gian
+bool checkScheduleTime(int currentHour, int currentMinute, int startHour, int startMinute, int endHour, int endMinute) {
+  if (startHour == -1 || endHour == -1) return false;
+
+  unsigned long currentTime = currentHour * 60 + currentMinute;
+  unsigned long startTime = startHour * 60 + startMinute;
+  unsigned long endTime = endHour * 60 + endMinute;
+
+  if (startTime < endTime) {
+    // Không qua ngày (ví dụ: 8h30 → 20h45)
+    return (currentTime >= startTime && currentTime < endTime);
+  } else {
+    // Qua ngày (ví dụ: 22h → 2h sáng)
+    return (currentTime >= startTime || currentTime < endTime);
   }
 }
 
